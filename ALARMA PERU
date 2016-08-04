@@ -1,0 +1,295 @@
+/*Software para controlar una casa mediante comandos AT, tenemos un final de carrera que activara una bocina(alarma);
+ * Sensor PIR que activara una bocina(alarma), consultaremos temperatura y humedad para esto tenemos un sensor DHT11
+ * Se simulara un termostato por medio de un servomotor(en tres niveles de movimiento)
+ * Fecha de presentacion: 07 de julio del 2016
+ * Integrantes: Jorge Alarco, Orlando Flores, Jose Pinto
+ */
+
+#include <SoftwareSerial.h> //libreria para usar SIM900
+SoftwareSerial SIM900(7,8); //Segun modelo los pines para TX y Rx son 7 y 8
+#include <DHT.h>  //Libreria para el sensor DHT11
+#define DHTPIN 2 // Conectamos DATA al puerto 2 digital del Arduino
+#define DHTTYPE DHT11 
+DHT dht(DHTPIN, DHTTYPE);
+#include <Servo.h>  //libreria para el servomotor
+Servo miServo;
+#include <EEPROM.h>
+
+int pir=11;//El sensor PIR conectamos al pin11
+char numero_cell[]="988306056"; //Ingresamos el numero de telefono con el que controlaremos la casa
+boolean valor=true;   
+int i=0;
+int j=0;
+char DAT; 
+boolean condicion=true;
+char datosSERIAL[10];
+char clave_uno[]={'t','e','m','p','e'}; //Clave para consular la temperatura(se antepone @)
+char clave_dos[]={'h','u','m','e','d'}; //Clave para consultar la humedad (se antepone @)
+char clave_tres[]={'t','e','r','m','1'}; //Clave para mover el servomotor(termostato) al primer nivel (se antepone @)
+char clave_cuatro[]={'t','e','r','m','2'}; //Clave para mover el servomotor(termostato) al segundo nivel (se antepone @)
+char clave_cinco[]={'t','e','r','m','3'}; //Clave para mover el servomotor(termostato) al tercer nivel (se antepone @)
+char clave_seis[]={'a','l','a','r','m'}; //Clave para desactivar la alarma(se antepone @)
+
+float t= dht.readTemperature();//Lee la temperatura
+int grados1=10; //esta variable la usaremos para poner a 10 grados el servomotor
+int grados2=90; //esta variable la usaremos para poner a 90 grados el servomotor
+int grados3=170; //esta variable la usaremos para poner a 170 grados el servomotor
+
+/* void setup() 
+* Funcion obligatoria donde inicializa las configuraciones de los diferentes elementos 
+*/
+
+void setup() {
+  Serial.begin(9600); //baudiaje de nuestro arduino
+  SIM900.begin(9600); //baudiaje de la SIM900
+  dht.begin(); //inicializamos el sensor DHT11
+  delay(2000); //retardo de 2 segundos
+  pinMode(5,INPUT);//lee el estado de la puerta(fin de carrera)
+  pinMode(4,OUTPUT);//Endender Apagar la alarma
+  pinMode(10,OUTPUT);//LED indicador de sensado
+  pinMode(6,OUTPUT);//Apagar los modulos(relay)
+  pinMode(9,OUTPUT);//endender la tarjeta SIM900
+  pinMode(11,INPUT);//PIR puerto 11 como entrada
+  pinMode(12,OUTPUT);
+  pinMode(13,OUTPUT);
+  digitalWrite(12, HIGH);
+  digitalWrite(13, LOW);
+  SIM900power(); //Funcion para endender tarjeta SIM900(su implementacion lineas abajo)
+  delay(15000); //Retardo para que la tarjeta SIM tenga señal
+  configuracion_inicial(); //Funcion para poner en modo mensaje la SIM900(su implementacion lineas abajo)
+  Serial.println("Telfonia II"); //Mensaje que observaremos por el monitor serial
+  delay(1000); //retardo de un segundo
+  miServo.attach(3); //nuestro sevomotor sera controlado por el puerto3 digital
+}
+
+/* void loop() 
+ *  funcion obligatoria para el funcionamiento de un programa; aca es donde se 
+   ejecutan las acciones de nuestro programa 
+*/
+
+void loop() {
+  digitalWrite(10,HIGH); //LED indicador Sistema Alarma lista
+  
+  Serial.println("esperando recibir mensaje..."); //mensaje que se observara por el monitor serial
+    while(true)
+    
+    {
+    alarma(); // Funcion que activa la alarma(su implementacion lineas abajo)
+    leer_mensaje(); //Funcion para leer los mensajes segun la clave consultaremos o realizaremos una accion
+    } 
+}
+
+
+/* void alarma()
+ *  Si el final de carrera pasa a estado bajo se enciende la alarma y realiza una llamada al numero declarado 
+ *  Si el sensor PIR pasa a estado alto se enciende la alarma y realiza una llamada al numero declarado
+*/
+ 
+void alarma(){
+    while(digitalRead(5)==LOW){//mientras el pin5 estado bajo
+    digitalWrite(4,HIGH);//encendemos la Alarma
+    llamar(); //Funcion para hacer una llamada(su implementacion lineas abajo)
+    delay(100);  
+    }
+    /*
+    while(digitalRead(11)==HIGH){//mientras el PIR estado alto
+    digitalWrite(4,HIGH);//endendemos Alarma
+    llamar(); //Funcion para hacer una llamada(su implementacion lineas abajo)
+    delay(100);  
+  }  */
+}
+
+/* void SIM900power()
+ *  Funcion para encender el SIM900 sin necesidad de presionar fisicamente el boton de 
+    encendido
+*/
+
+void SIM900power(){
+  digitalWrite(9,HIGH);//pin9 estado alto
+  delay(1000);//duracion del pin9 en estado alto 
+  digitalWrite(9,LOW);//pin9 estado bajo
+  delay(7000);
+}
+
+/* void llamar()
+ *Funcion para realizar una llamada usamos los comandos AT  
+*/
+
+void llamar(){
+  SIM900.println("ATD+ +56988306056;");// Llamar al numero indicado
+  delay(100);
+  SIM900.println();
+  delay(15000);//duracion de la llamada es de 15 segundos
+  SIM900.println("ATH");//comando AT para colgar
+  delay(3000);
+}
+
+/* void configuracion_inicial()
+ * Funcion para poner la SIM900 en modo mensaje de texto   
+*/
+
+void configuracion_inicial(){
+  Serial.println("AT+IPR=9600");//Baudiaje
+  SIM900.println("AT+IPR=9600");//Baudiaje
+  delay(300);
+  Serial.println("AT+CMGF=1");//Mensaje modo texto
+  SIM900.println("AT+CMGF=1");//Mensaje modo texto
+  delay(300);
+  Serial.println("AT+CMGR=?");//ACTIVAMOS CODIGO PARA RECIBIR MENSAJES
+  SIM900.println("AT+CMGR=?");//ACTIVAMOS CODIGO PARA RECIBIR MENSAJES
+  delay(300);
+  Serial.println("AT+CNMI=2,2,0,0");//la tarjeta envia todos los mensajes al arduino via serial
+  Serial.println("AT+CNMI=2,2,0,0");//la tarjeta envia todos los mensajes al arduino via serial
+  delay(300); 
+  Serial.println("Configuracion inicial terminada");
+  delay(300);
+}
+
+/* void leer_mensaje()
+ *  Funcion que lee el mensaje 
+ */
+
+
+void leer_mensaje()
+{
+  salir:
+    if (SIM900.available()>0){ //Si hay un dato en el puerto SERIAL     
+      char DAT =SIM900.read();//leo los datos a traves del read y lo almacenamos en DAT(se almacenan y se borran hasta detectar @)
+      if(DAT=='@'){ //el arroba hace detectar el inicio del codigo
+            while(true){//ingresa en un while para leer solo los codigos futuros que estan por llegar despues de la arroba
+                if (SIM900.available()>0){
+                    char DAT_dos =SIM900.read();
+                    datosSERIAL[j]= DAT_dos;//almacena en cadena de caracteres, suma de caracteres     
+                    j++;
+               
+               if (DAT_dos=='\n'){ //cuando termine de entregar todos los datos dara un enter garantizando el final del codigo   
+                  Serial.println("Lectura:");//IMPRIME LOS CARACTERES ALMACENADOS PARA VER SI TODO ESTA OK
+                  for(int i=0;i<=j;i++){      
+                    Serial.print(datosSERIAL[i]);//IMPRIME TODO EL CODIGO GUARDADO EN EL ARRAY
+                  }
+                    consultar_temperatura();//llama a la la funcion consultar_temperatura
+                    consultar_humedad();//llama a la funcion consultar_humedad
+                    mover_servo1();// funcion que mueve el servo a la posicion uno
+                    mover_servo2();// funcion que mueve el servo a la posicion dos
+                    mover_servo3();// funcion que mueve el servo a la posicion tres
+                    apagar_alarma();//funcion para apagar alarma
+                    delay(500);
+                  
+                  for(int i=0;i<=j;i++){               
+                    datosSERIAL[i]==0;//borro array
+                    DAT_dos=0;
+                    DAT=0;
+                    }
+                    
+                  j=0;//borra el puntero o acumulador si no se hace esto no detecta los sigueintes codigos
+                  goto salir;//sale de todos los ciclos y va al inicio para volver a leer codigo
+                 }    
+            } 
+          }
+       }
+    } 
+  }  
+
+
+void consultar_temperatura(){
+   if(datosSERIAL[0]==clave_uno[0] && datosSERIAL[1]==clave_uno[1] && datosSERIAL[2]==clave_uno[2] && datosSERIAL[3]==clave_uno[3] && datosSERIAL[4]==clave_uno[4])
+   {
+    float t= dht.readTemperature();//Lee la temperatura
+    SIM900.println("AT+CMGF=1");//modo texto 
+      //Imprime los datos al puerto serie como texto ASCII seguido de un retorno de carro
+      delay(2000);
+      SIM900.print("AT+CMGS=");// comando de envio de mensaje 
+      //Imprime los datos al puerto serie como texto ASCII
+      SIM900.print((char)34);//ponemos las comillas ", para que lo tome debe ser char de lo contrario el serial envia caracter por caracter
+      SIM900.print(numero_cell);//colocamos numero de telefono
+      SIM900.println((char)34);//volvemos a poner el caracter "
+      delay(200);//tiempo para que de respuesta el modulo >
+      SIM900.print("Temperatura: ");
+      SIM900.print(t);//dato del sensor de temperatura
+      SIM900.println(" C"); 
+      SIM900.print((char)26);//ponemos el simbolo ascii 26,que corresponde a CTRL+Z,con lo que el modulo sabe que el sms termino
+   }
+}
+
+
+void consultar_humedad(){
+  if(datosSERIAL[0]==clave_dos[0] && datosSERIAL[1]==clave_dos[1] && datosSERIAL[2]==clave_dos[2] && datosSERIAL[3]==clave_dos[3] && datosSERIAL[4]==clave_dos[4]){
+    float h=dht.readHumidity(); //Lee la Humedad
+    SIM900.println("AT+CMGF=1"); //modo texto
+    delay(2000);
+    SIM900.print("AT+CMGS=");// Comando para envio de mensajes
+    SIM900.print((char)34); //Colocamos comillas "
+    SIM900.print(numero_cell);//colocamos el numero de telefono 
+    SIM900.println((char)34); //Colocamos las comillas finales " 
+    delay(200);
+    SIM900.print("Humedad: "); 
+    SIM900.print(h); //dato del sensor de humedad
+    SIM900.println("%");
+    SIM900.print((char)26);// equivalente s un CTRL+Z, se usa para finalizar el mensaje
+  }
+}
+
+void mover_servo1(){
+  if(datosSERIAL[0]==clave_tres[0] && datosSERIAL[1]==clave_tres[1]&& datosSERIAL[2]==clave_tres[2]&& datosSERIAL[3]==clave_tres[3]&& datosSERIAL[4]==clave_tres[4]){
+    miServo.write(grados1);
+    SIM900.println("AT+CMGF=1"); //modo texto
+    delay(2000);
+    SIM900.print("AT+CMGS=");// Comando para envio de mensajes
+    SIM900.print((char)34); //Colocamos comillas "
+    SIM900.print(numero_cell);//colocamos el numero de telefono 
+    SIM900.println((char)34); //Colocamos las comillas finales " 
+    delay(200);
+    SIM900.println("Termostato en nivel1 750 Watts"); 
+    SIM900.print((char)26);// equivalente s un CTRL+Z, se usa para finalizar el mensaje 
+           
+  }
+}
+
+
+void mover_servo2(){
+  if(datosSERIAL[0]==clave_cuatro[0] && datosSERIAL[1]==clave_cuatro[1]&& datosSERIAL[2]==clave_cuatro[2]&& datosSERIAL[3]==clave_cuatro[3]&& datosSERIAL[4]==clave_cuatro[4]){
+    miServo.write(grados2); 
+    delay(1000);
+    SIM900.println("AT+CMGF=1"); //modo texto
+    delay(2000);
+    SIM900.print("AT+CMGS=");// Comando para envio de mensajes
+    SIM900.print((char)34); //Colocamos comillas "
+    SIM900.print(numero_cell);//colocamos el numero de telefono 
+    SIM900.println((char)34); //Colocamos las comillas finales " 
+    delay(200);
+    SIM900.print("Termostato en nivel2 1250 Watts"); 
+    SIM900.print((char)26);// equivalente s un CTRL+Z, se usa para finalizar el mensaje  
+  }
+}
+
+void mover_servo3(){
+  if(datosSERIAL[0]==clave_cinco[0] && datosSERIAL[1]==clave_cinco[1]&& datosSERIAL[2]==clave_cinco[2]&& datosSERIAL[3]==clave_cinco[3]&& datosSERIAL[4]==clave_cinco[4]){
+    miServo.write(grados3); 
+    delay(1000);
+    SIM900.println("AT+CMGF=1"); //modo texto
+    delay(2000);
+    SIM900.print("AT+CMGS=");// Comando para envio de mensajes
+    SIM900.print((char)34); //Colocamos comillas "
+    SIM900.print(numero_cell);//colocamos el numero de telefono 
+    SIM900.println((char)34); //Colocamos las comillas finales " 
+    delay(200);
+    SIM900.print("Termostato en nivel2 2000 Watts"); 
+    SIM900.print((char)26);// equivalente s un CTRL+Z, se usa para finalizar el mensaje  
+  }
+}
+
+void apagar_alarma(){
+  if(datosSERIAL[0]==clave_seis[0] && datosSERIAL[1]==clave_seis[1]&& datosSERIAL[2]==clave_seis[2]&& datosSERIAL[3]==clave_seis[3]&& datosSERIAL[4]==clave_seis[4]){
+    digitalWrite(4,LOW);//Apagamos la Alarma 
+    delay(1000);
+    SIM900.println("AT+CMGF=1"); //modo texto
+    delay(2000);
+    SIM900.print("AT+CMGS=");// Comando para envio de mensajes
+    SIM900.print((char)34); //Colocamos comillas "
+    SIM900.print(numero_cell);//colocamos el numero de telefono 
+    SIM900.println((char)34); //Colocamos las comillas finales " 
+    delay(200);
+    SIM900.print("Alarma apagada"); 
+    SIM900.print((char)26);// equivalente s un CTRL+Z, se usa para finalizar el mensaje  
+  }
+}
